@@ -1,0 +1,26 @@
+# Knox Suite Configuration
+# Copy to ~/.knox/config.yaml or ./config.yaml
+
+# Anthropic API Key (or set ANTHROPIC_API_KEY environment variable)
+anthropic_key: ""
+
+# Model to use (default: claude-3-5-sonnet-20241022)
+model: "claude-3-5-sonnet-20241022"
+
+# Overall timeout in seconds (default: 300)
+timeout: 300
+
+# Output directory (default: ./reports)
+output_dir: "./reports"
+
+# Verbose logging (default: false)
+verbose: false
+
+# Disable AI analysis (default: false)
+no_ai: false
+
+# Exit with error code if findings >= severity (critical, high, medium, low)
+fail_on: ""
+
+# Default modules to run (empty = all)
+modules: []

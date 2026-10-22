@@ -1,0 +1,112 @@
+name: Knox Suite Security Scan
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Target domain to scan'
+        required: true
+        type: string
+      fail_on:
+        description: 'Minimum severity to fail build'
+        required: false
+        type: choice
+        options: ['critical', 'high', 'medium', 'low', 'info']
+        default: 'high'
+      modules:
+        description: 'Comma-separated modules to run'
+        required: false
+        type: string
+        default: ''
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: Install security tools
+        run: |
+          # Install Go-based tools
+          go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
+          go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
+          go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest
+          go install -v github.com/projectdiscovery/dnsx/cmd/dnsx@latest
+          go install -v github.com/projectdiscovery/katana/cmd/katana@latest
+          go install -v github.com/lc/gau/v2/cmd/gau@latest
+          go install -v github.com/tomnomnom/waybackurls@latest
+          go install -v github.com/ffuf/ffuf/v2@latest
+          
+          # Install system tools
+          sudo apt-get update && sudo apt-get install -y nmap nikto sslscan whatweb dirsearch sqlmap amass
+          
+          # Update nuclei templates
+          nuclei -update-templates
+          
+          # Add to PATH
+          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
+
+      - name: Build Knox Suite
+        run: make build
+
+      - name: Run Scan
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          ./build/knox scan "${{ github.event.inputs.target }}" \
+            --output ./scan-report \
+            --fail-on "${{ github.event.inputs.fail_on }}" \
+            --modules "${{ github.event.inputs.modules }}" \
+            --timeout 1800 \
+            --verbose
+
+      - name: Check for critical findings
+        if: github.event.inputs.fail_on != 'info'
+        run: |
+          # Parse JSON report for findings
+          CRITICAL=$(jq '[.vulnerabilities[] | select(.severity=="critical")] | length' ./scan-report/report.json)
+          HIGH=$(jq '[.vulnerabilities[] | select(.severity=="high")] | length' ./scan-report/report.json)
+          MEDIUM=$(jq '[.vulnerabilities[] | select(.severity=="medium")] | length' ./scan-report/report.json)
+          
+          echo "Critical: $CRITICAL, High: $HIGH, Medium: $MEDIUM"
+          
+          # Fail based on threshold
+          case "${{ github.event.inputs.fail_on }}" in
+            critical)
+              if [ "$CRITICAL" -gt 0 ]; then exit 1; fi
+              ;;
+            high)
+              if [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ]; then exit 1; fi
+              ;;
+            medium)
+              if [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ] || [ "$MEDIUM" -gt 0 ]; then exit 1; fi
+              ;;
+          esac
+
+      - name: Upload report
+        uses: actions/upload-artifact@v4
+        with:
+          name: knox-report-${{ github.event.inputs.target }}
+          path: scan-report/
+          retention-days: 30
+
+      - name: Comment on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const report = fs.readFileSync('./scan-report/report.md', 'utf8');
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '## Knox Suite Security Scan Results\n\n' + report.substring(0, 65535)
+            })

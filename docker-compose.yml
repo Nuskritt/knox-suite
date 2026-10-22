@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+  knox:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VERSION: ${VERSION:-dev}
+        BUILD_TIME: ${BUILD_TIME:-unknown}
+    container_name: knox-suite
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-claude-3-5-sonnet-20241022}
+      - KNOX_TIMEOUT=${KNOX_TIMEOUT:-600}
+      - KNOX_OUTPUT_DIR=/reports
+    volumes:
+      - ./reports:/reports
+      - ./config.yaml:/home/knox/.knox/config.yaml:ro
+      - ./.env:/home/knox/.env:ro
+    working_dir: /home/knox
+    # Run as non-root (UID 1000)
+    user: "1000:1000"
+    # Security options
+    security_opt:
+      - no-new-privileges:true
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # Optional: Run with host network for localhost targets
+  knox-host:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: knox-suite-host
+    network_mode: host
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-claude-3-5-sonnet-20241022}
+      - KNOX_TIMEOUT=${KNOX_TIMEOUT:-600}
+      - KNOX_OUTPUT_DIR=/reports
+    volumes:
+      - ./reports:/reports
+      - ./config.yaml:/home/knox/.knox/config.yaml:ro
+      - ./.env:/home/knox/.env:ro
+    working_dir: /home/knox
+    user: "1000:1000"
+    security_opt:
+      - no-new-privileges:true
+    profiles:
+      - host-network
+
+# Usage:
+# docker compose run --rm knox scan example.com
+# docker compose run --rm knox recon example.com
+# docker compose run --rm knox module subdomain example.com
+# docker compose --profile host-network run --rm knox-host scan localhost

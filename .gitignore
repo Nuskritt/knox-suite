@@ -1,0 +1,35 @@
+# Build artifacts
+build/
+dist/
+knox
+knox.exe
+
+# Reports
+reports/
+*.report/
+
+# Config
+.env
+config.yaml
+*.yaml.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test
+coverage.out
+coverage.html
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp
